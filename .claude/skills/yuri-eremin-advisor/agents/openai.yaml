@@ -1,0 +1,4 @@
+interface:
+  display_name: "Агент Юрия Ерёмина"
+  short_description: "Редакционный советник по Reels и продвижению"
+  default_prompt: "Используй $yuri-eremin-advisor, чтобы сформировать или проверить Reels по методике Юрия Ерёмина и усилить его пользу для клиента."
