@@ -13,6 +13,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SOURCE = ROOT / "source" / "IMG_4701.MOV"
 FONTS = ROOT / "fonts"
+IMG = HERE / "img"
 ASS = HERE / "subtitles.ass"
 OUT = HERE / "reels.mp4"
 
@@ -54,6 +55,15 @@ CUES = [
     (41.65, 44.40, "Sub", f"Знаю я, {ACC}архитектор{END}\\NВячеслав Деев"),
     (44.40, 45.75, "Sub", "Контакты — в описании профиля"),
 ]
+# Вставки визуализаций проекта бюро (время исходника): доказательство
+# к словам «в своих проектах использую… палитра, рисунок, фактура».
+INSERTS = [
+    (22.10, 25.80, "1_dush_ugol.jpg"),   # душевая, кварцит на стене и полу
+    (25.80, 29.80, "2_dush_front.jpg"),  # душевая фронтально, рисунок камня
+    (29.80, 33.90, "3_tumba.jpg"),       # тумба в лаке, столешница, кварцит
+]
+INSERT_LABEL = "визуализация проекта"
+
 # Надписи в координатах готового ролика (до ускорения).
 HOOK = (0.0, 3.6, "Hook", f"Камень в душевой —\\N{ACC}плесень и пятна?{END}")
 BRAND = "DEEV architects"
@@ -95,6 +105,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Sub,Montserrat DEEV SemiBold,62,&H00FFFFFF,&H00FFFFFF,&H20000000,&H50000000,0,0,0,0,100,100,0,0,1,5,3,2,120,160,470,1
 Style: Big,Montserrat DEEV Bold,96,&H009CC8E0,&H00FFFFFF,&H20000000,&H50000000,1,0,0,0,100,100,8,0,1,5,3,2,120,160,470,1
 Style: Hook,Montserrat DEEV Bold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,3,8,100,140,330,1
+Style: Label,Montserrat DEEV Regular,34,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,4,0,1,2,2,8,100,140,270,1
 Style: Brand,Montserrat DEEV SemiBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,6,0,1,2,2,8,100,140,270,1
 
 [Events]
@@ -107,6 +118,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for a, b, style, text in CUES:
         s, e = out_span(a, b)
         lines.append(f"Dialogue: 0,{ts(s)},{ts(e)},{style},,0,0,0,,{fade}{text}")
+    s, _ = out_span(INSERTS[0][0], INSERTS[0][1])
+    _, e = out_span(INSERTS[-1][0], INSERTS[-1][1])
+    lines.append(f"Dialogue: 1,{ts(s)},{ts(e)},Label,,0,0,0,,{fade}{INSERT_LABEL}")
     s, _ = out_span(BRAND_FROM, SEGMENTS[-1][1])
     lines.append(f"Dialogue: 1,{ts(s)},{ts(total)},Brand,,0,0,0,,{fade}{BRAND}")
     ASS.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
@@ -128,16 +142,34 @@ def build():
     parts.append(f"{''.join(labels)}concat=n={n}:v=1:a=1[vc][ac]")
     ass = str(ASS).replace(":", r"\:")
     fonts = str(FONTS).replace(":", r"\:")
+    parts.append(f"[vc]setpts=PTS/{SPEED},fps=30,scale=1080:1920:flags=lanczos,setsar=1[b0]")
+    # Визуализации: медленный наезд и мягкое появление/исчезание поверх селфи.
+    inputs = []
+    for k, (a, b, name) in enumerate(INSERTS, start=1):
+        t0, t1 = out_span(a, b)
+        d = t1 - t0
+        frames = int(round(d * 30)) + 2
+        inputs += ["-i", str(IMG / name)]
+        parts.append(
+            f"[{k}:v]scale=2160:3840:flags=lanczos,"
+            f"zoompan=z='1+0.05*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f":d={frames}:s=1080x1920:fps=30,setsar=1,format=yuva420p,"
+            f"fade=t=in:st=0:d=0.3:alpha=1,fade=t=out:st={d - 0.3:.3f}:d=0.3:alpha=1,"
+            f"setpts=PTS-STARTPTS+{t0:.3f}/TB[im{k}]"
+        )
+        parts.append(
+            f"[b{k - 1}][im{k}]overlay=eof_action=pass:"
+            f"enable='between(t,{t0:.3f},{t1:.3f})'[b{k}]"
+        )
     parts.append(
-        f"[vc]setpts=PTS/{SPEED},fps=30,scale=1080:1920:flags=lanczos,setsar=1,"
-        f"subtitles='{ass}':fontsdir='{fonts}'[vout]"
+        f"[b{len(INSERTS)}]subtitles='{ass}':fontsdir='{fonts}',format=yuv420p[vout]"
     )
     parts.append(
         f"[ac]atempo={SPEED},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"
     )
     cmd = [
         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-v", "error",
-        "-i", str(SOURCE),
+        "-i", str(SOURCE), *inputs,
         "-filter_complex", ";".join(parts),
         "-map", "[vout]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "slow", "-crf", "19",
