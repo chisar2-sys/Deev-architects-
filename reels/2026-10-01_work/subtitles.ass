@@ -1,0 +1,37 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Sub,Montserrat DEEV SemiBold,62,&H00FFFFFF,&H00FFFFFF,&H20000000,&H50000000,0,0,0,0,100,100,0,0,1,5,3,2,120,160,470,1
+Style: Big,Montserrat DEEV Bold,96,&H009CC8E0,&H00FFFFFF,&H20000000,&H50000000,1,0,0,0,100,100,8,0,1,5,3,2,120,160,470,1
+Style: Hook,Montserrat DEEV Bold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,3,8,100,140,330,1
+Style: Brand,Montserrat DEEV SemiBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,6,0,1,2,2,8,100,140,270,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 1,0:00:00.00,0:00:03.13,Hook,,0,0,0,,{\fad(120,120)}Камень в душевой —\N{\c&H9CC8E0&\b1}плесень и пятна?{\r}
+Dialogue: 0,0:00:00.00,0:00:00.97,Sub,,0,0,0,,{\fad(120,120)}Камень в душевую?
+Dialogue: 0,0:00:00.97,0:00:03.10,Sub,,0,0,0,,{\fad(120,120)}Он же покроется {\c&H9CC8E0&\b1}плесенью{\r}
+Dialogue: 0,0:00:03.10,0:00:04.93,Sub,,0,0,0,,{\fad(120,120)}будет впитывать всё подряд
+Dialogue: 0,0:00:04.93,0:00:06.83,Sub,,0,0,0,,{\fad(120,120)}Масло, жир, мыло…
+Dialogue: 0,0:00:06.83,0:00:08.53,Sub,,0,0,0,,{\fad(120,120)}Пятна будут непонятные
+Dialogue: 0,0:00:08.53,0:00:09.49,Sub,,0,0,0,,{\fad(120,120)}А ещё на кухне…
+Dialogue: 0,0:00:09.49,0:00:10.11,Sub,,0,0,0,,{\fad(120,120)}Это всё {\c&H9CC8E0&\b1}мифы{\r}
+Dialogue: 0,0:00:10.11,0:00:12.50,Sub,,0,0,0,,{\fad(120,120)}Можно на кухню и в ванную
+Dialogue: 0,0:00:12.50,0:00:14.09,Sub,,0,0,0,,{\fad(120,120)}постелить {\c&H9CC8E0&\b1}натуральный камень{\r}
+Dialogue: 0,0:00:14.09,0:00:15.50,Sub,,0,0,0,,{\fad(120,120)}И камень этот называется…
+Dialogue: 0,0:00:15.50,0:00:16.24,Big,,0,0,0,,{\fad(120,120)}КВАРЦИТ
+Dialogue: 0,0:00:16.24,0:00:19.94,Sub,,0,0,0,,{\fad(120,120)}Я в своих проектах\Nиспользую этот камень
+Dialogue: 0,0:00:19.94,0:00:24.16,Sub,,0,0,0,,{\fad(120,120)}Очень большая\Nи интересная {\c&H9CC8E0&\b1}палитра{\r}
+Dialogue: 0,0:00:24.16,0:00:26.50,Sub,,0,0,0,,{\fad(120,120)}рисунка, цвета, фактуры
+Dialogue: 0,0:00:26.50,0:00:27.94,Sub,,0,0,0,,{\fad(120,120)}Просто нереально
+Dialogue: 0,0:00:27.94,0:00:31.07,Sub,,0,0,0,,{\fad(120,120)}Практически любое желание —\Nвоплотить в жизнь
+Dialogue: 0,0:00:31.07,0:00:32.50,Sub,,0,0,0,,{\fad(120,120)}А как это использовать?
+Dialogue: 0,0:00:32.50,0:00:34.90,Sub,,0,0,0,,{\fad(120,120)}Знаю я, {\c&H9CC8E0&\b1}архитектор{\r}\NВячеслав Деев
+Dialogue: 0,0:00:34.90,0:00:36.07,Sub,,0,0,0,,{\fad(120,120)}Контакты — в описании профиля
+Dialogue: 1,0:00:32.50,0:00:36.07,Brand,,0,0,0,,{\fad(120,120)}DEEV architects
