@@ -3,7 +3,8 @@
 Исходники (в reels/source/, в git не хранятся):
   IMG_4701.MOV         — селфи на складе камня (iCloud-ссылка из «Фото»);
   voiceover_01-10.m4a  — закадровый текст, записан отдельно, с дублями.
-Визуализации проекта бюро: reels/2026-10-01_work/img/.
+Визуализации проектов бюро: reels/2026-10-01_work/img/
+  (1–3 — ванная и душевая, 4–6 — кухни).
 
 Запуск:  python3 reels/2026-10-01_work/build.py
 Результат: reels/2026-10-01_work/reels.mp4
@@ -13,6 +14,7 @@ import subprocess
 import tempfile
 
 import imageio_ffmpeg
+import numpy as np
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
@@ -30,11 +32,15 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 SPEED = 1.15   # ускорение всего ролика (видео и голос, без смены тона)
 FPS = 30
 VO_GAIN_DB = -4.0  # выравнивание закадра по громкости с голосом со склада
+SIZE = (1080, 1920)
+MIX = 0.30     # длительность перетекания между планами визуализаций, с
 
-# Звуковая дорожка: (источник, начало, конец, кадр).
-# Кадр None — собственное видео селфи; иначе — план визуализации из SHOTS.
+# Звуковая дорожка: (источник, начало, конец, планы).
+# Планы None — собственное видео селфи; иначе — список (план, до какого
+# времени источника), None во втором поле — до конца куска.
 # Из селфи вырезаны «Да вы что», «там», «Ребята» и паузы; из закадра выбраны
 # лучшие дубли, убраны «Да», «Ну хотя кому-то нравится…», «И радует вас».
+# Кухня — на словах о кухне, ванная — на словах о душевой.
 PIECES = [
     ("mov", 0.00, 1.12, None),     # «Камень в душевую?»
     ("mov", 1.75, 6.30, None),     # «Он же покроется плесенью… всё подряд»
@@ -42,40 +48,60 @@ PIECES = [
     ("mov", 7.92, 12.45, None),    # «жир, мыло… кто-то делает?»
     ("mov", 13.88, 14.60, None),   # «Это всё мифы»
     ("mov", 15.05, 22.10, None),   # «Можно на кухню… называется кварцит»
-    ("mov", 22.10, 26.35, "s1"),   # «Я в своих проектах использую этот камень»
-    ("vo", 2.25, 3.42, "s2"),      # «Почему именно кварцит?»
-    ("vo", 7.45, 13.40, "s2"),     # «Потому что… чистый кварц. Твёрже гранита и стекла»
-    ("vo", 13.75, 16.80, "s3"),    # «Поэтому столешница не царапается на кухне»
-    ("vo", 16.95, 20.50, "s3"),    # «Лимон, вино, уксус ему не страшны»
-    ("vo", 20.95, 23.73, "s4"),    # «В отличие, допустим, от того же мрамора»
-    ("vo", 26.40, 34.45, "s5"),    # «Для меня и моих клиентов пятнышки… не подходят»
-    ("vo", 92.45, 95.63, "s6"),    # «И в душевой я стараюсь сделать стены без швов»
-    ("vo", 95.95, 101.51, "s6"),   # «Мы подберём слэбы… перекрыть»
-    ("vo", 101.90, 104.02, "s7"),  # «Только стыки во внутренних углах»
-    ("vo", 113.45, 117.36, "s8"),  # «Не всё, что продают как кварцит, им является»
-    ("vo", 119.20, 121.56, "s8"),  # «Поэтому каждый слэб я выбираю сам»
-    ("vo", 122.10, 124.58, "s9"),  # «Приезжаю на склад и проверяю его»
-    ("vo", 126.00, 127.96, "s9"),  # «Ещё до покупки и до заказа»
-    ("vo", 143.70, 146.22, "s10"), # «В итоге у моего клиента кухня и ванная»
-    ("vo", 147.55, 153.05, "s11"), # «которые через 10 лет… как при сдаче»
+    ("mov", 22.10, 26.35, [("k2_wide", 24.20), ("b2_wide", None)]),  # «Я в своих проектах…»
+    ("vo", 2.25, 3.42, [("k1_fronts", None)]),                       # «Почему именно кварцит?»
+    ("vo", 7.45, 13.40, [("k1_pan", 9.40), ("k3_wide", 11.40), ("k3_top", None)]),
+    ("vo", 13.75, 16.80, [("k2_counter", None)]),                        # «столешница не царапается»
+    ("vo", 16.95, 20.50, [("k2_sink", 18.70), ("k3_sink", None)]),   # «Лимон, вино, уксус…»
+    ("vo", 20.95, 23.73, [("k1_texture", None)]),                    # «В отличие от мрамора»
+    ("vo", 26.40, 34.45, [("k3_column", 29.10), ("k2_portal", 31.80), ("k1_sink", None)]),
+    ("vo", 92.45, 95.63, [("b2_wide", 94.00), ("b1_wide", None)]),   # «в душевой… без швов»
+    ("vo", 95.95, 101.51, [("b2_tilt", 98.70), ("b1_wall", None)]),  # «слэбы большого размера»
+    ("vo", 101.90, 104.02, [("b1_corner", None)]),                   # «стыки во внутренних углах»
+    ("vo", 113.45, 117.36, [("b2_texture", 115.40), ("k1_texture2", None)]),  # «не всё… кварцит»
+    ("vo", 119.20, 121.56, [("k2_stone", None)]),                    # «каждый слэб выбираю сам»
+    ("vo", 122.10, 124.58, [("b2_floor", None)]),                    # «приезжаю на склад…»
+    ("vo", 126.00, 127.96, [("k3_column2", None)]),                  # «ещё до покупки»
+    ("vo", 143.70, 146.22, [("k3_final", 145.45), ("b3_final", None)]),  # «кухня и ванная»
+    ("vo", 147.55, 153.05, [("b3_final", 149.30), ("k2_final", 151.30), ("b1_final", None)]),  # «через 10 лет…»
     ("mov", 39.40, 41.05, None),   # «А как это использовать?»
     ("mov", 41.65, 45.75, None),   # «Знаю я, архитектор Вячеслав Деев. Контакты…»
 ]
 
-# Планы визуализаций: файл, (центр x, центр y, ширина кадра) в начале и в конце.
-# Координаты — в пикселях исходника 1440×2560; кадр 9:16. Медленный наезд/отъезд.
+# Планы: файл, (центр x, центр y, высота кадра) в начале и в конце — в долях
+# картинки; кадр всегда 9:16. Затем поворот перспективы в начале и в конце
+# (имитация движения камеры) и блик света по камню на крупных планах.
+B1, B2, B3 = "1_dush_ugol.jpg", "2_dush_front.jpg", "3_tumba.jpg"
+K1, K2, K3 = "4_kuhnya_fasady.jpg", "5_kuhnya_portal.jpg", "6_kuhnya_ostrov.jpg"
 SHOTS = {
-    "s1": ("1_dush_ugol.jpg", (720, 1280, 1440), (720, 1200, 1250)),    # душевая целиком
-    "s2": ("3_tumba.jpg", (720, 1280, 1440), (600, 1480, 1060)),        # тумба, столешница
-    "s3": ("3_tumba.jpg", (560, 1640, 820), (600, 1700, 700)),          # столешница, раковина
-    "s4": ("1_dush_ugol.jpg", (1140, 900, 600), (1140, 1000, 560)),     # стена из кварцита
-    "s5": ("2_dush_front.jpg", (700, 1200, 820), (700, 1150, 680)),     # рисунок камня
-    "s6": ("2_dush_front.jpg", (720, 1280, 1440), (720, 1300, 1180)),   # душевая без швов
-    "s7": ("1_dush_ugol.jpg", (845, 1400, 760), (845, 1350, 640)),      # внутренний угол
-    "s8": ("2_dush_front.jpg", (850, 1000, 640), (800, 1050, 540)),     # слэб крупно
-    "s9": ("3_tumba.jpg", (330, 560, 620), (350, 600, 540)),            # слэб крупно
-    "s10": ("3_tumba.jpg", (600, 1480, 1060), (720, 1280, 1440)),       # результат: ванная
-    "s11": ("1_dush_ugol.jpg", (720, 1200, 1200), (720, 1280, 1440)),   # результат: душевая
+    # кухни (горизонтальные кадры — панорама вбок и наезд)
+    "k1_pan": (K1, (0.24, 0.50, 0.96), (0.50, 0.52, 0.90), -0.020, 0.020, False),
+    "k1_fronts": (K1, (0.30, 0.74, 0.50), (0.36, 0.72, 0.42), 0.015, -0.010, True),
+    "k1_texture": (K1, (0.58, 0.77, 0.44), (0.68, 0.75, 0.40), -0.015, 0.015, True),
+    "k1_texture2": (K1, (0.80, 0.74, 0.42), (0.72, 0.76, 0.38), 0.015, -0.015, True),
+    "k1_sink": (K1, (0.20, 0.60, 0.62), (0.28, 0.62, 0.52), -0.015, 0.015, False),
+    "k2_wide": (K2, (0.62, 0.50, 0.96), (0.42, 0.50, 0.90), 0.020, -0.020, False),
+    "k2_counter": (K2, (0.30, 0.76, 0.50), (0.48, 0.78, 0.44), -0.020, 0.010, True),
+    "k2_sink": (K2, (0.84, 0.62, 0.56), (0.78, 0.60, 0.48), 0.015, -0.010, False),
+    "k2_portal": (K2, (0.40, 0.42, 0.90), (0.50, 0.40, 0.76), -0.015, 0.015, False),
+    "k2_stone": (K2, (0.17, 0.32, 0.46), (0.19, 0.38, 0.40), 0.010, -0.015, True),
+    "k2_final": (K2, (0.50, 0.46, 0.74), (0.62, 0.50, 0.96), 0.000, 0.020, False),
+    "k3_wide": (K3, (0.30, 0.52, 0.96), (0.58, 0.52, 0.92), -0.020, 0.015, False),
+    "k3_top": (K3, (0.40, 0.62, 0.66), (0.48, 0.62, 0.48), 0.010, -0.015, True),
+    "k3_sink": (K3, (0.70, 0.60, 0.52), (0.76, 0.61, 0.44), -0.010, 0.015, False),
+    "k3_column": (K3, (0.86, 0.34, 0.50), (0.86, 0.42, 0.44), 0.015, -0.010, True),
+    "k3_column2": (K3, (0.87, 0.48, 0.44), (0.86, 0.38, 0.40), -0.010, 0.015, True),
+    "k3_final": (K3, (0.45, 0.55, 0.80), (0.40, 0.52, 0.96), 0.015, -0.010, False),
+    # ванная и душевая (вертикальные кадры — наезд, подъём камеры)
+    "b1_wide": (B1, (0.50, 0.50, 0.96), (0.52, 0.47, 0.84), 0.020, -0.010, False),
+    "b1_wall": (B1, (0.79, 0.34, 0.42), (0.79, 0.40, 0.38), -0.015, 0.010, True),
+    "b1_corner": (B1, (0.59, 0.56, 0.53), (0.59, 0.53, 0.44), 0.015, -0.015, True),
+    "b1_final": (B1, (0.50, 0.47, 0.82), (0.50, 0.50, 0.96), -0.010, 0.015, False),
+    "b2_wide": (B2, (0.50, 0.50, 0.96), (0.50, 0.50, 0.82), -0.020, 0.015, False),
+    "b2_tilt": (B2, (0.49, 0.64, 0.55), (0.49, 0.40, 0.55), 0.010, -0.010, True),
+    "b2_texture": (B2, (0.59, 0.39, 0.44), (0.56, 0.42, 0.37), -0.015, 0.010, True),
+    "b2_floor": (B2, (0.42, 0.82, 0.38), (0.58, 0.80, 0.36), 0.015, -0.015, True),
+    "b3_final": (B3, (0.45, 0.58, 0.80), (0.50, 0.50, 0.96), 0.015, -0.010, False),
 }
 
 ACC = r"{\c&H9CC8E0&\b1}"   # тёплый песочный акцент
@@ -142,16 +168,32 @@ def out_span(src, a, b):
 
 
 def video_items():
-    """Видеоряд: подряд идущие куски с одним планом склеиваются в один план."""
+    """Видеоряд: ('mov', a, b) или ('block', [(план, длительность), …]).
+
+    Подряд идущие куски с визуализациями собираются в один блок, внутри
+    которого планы перетекают друг в друга.
+    """
     items = []
-    for src, a, b, shot in PIECES:
-        if shot is None:
+    for src, a, b, shots in PIECES:
+        if shots is None:
             items.append(("mov", a, b))
-        elif items and items[-1][0] == "shot" and items[-1][1] == shot:
-            items[-1] = ("shot", shot, items[-1][2] + (b - a))
-        else:
-            items.append(("shot", shot, b - a))
+            continue
+        if not (items and items[-1][0] == "block"):
+            items.append(("block", []))
+        t = a
+        for shot, until in shots:
+            until = b if until is None else until
+            block = items[-1][1]
+            if block and block[-1][0] == shot:   # план продолжается в следующем куске
+                block[-1] = (shot, block[-1][1] + until - t)
+            else:
+                block.append((shot, until - t))
+            t = until
     return items
+
+
+def item_duration(item):
+    return item[2] - item[1] if item[0] == "mov" else sum(d for _, d in item[1])
 
 
 def ts(t):
@@ -178,7 +220,7 @@ Style: Sub,Montserrat DEEV SemiBold,58,&H00FFFFFF,&H00FFFFFF,&H20000000,&H500000
 Style: Big,Montserrat DEEV Bold,96,&H009CC8E0,&H00FFFFFF,&H20000000,&H50000000,1,0,0,0,100,100,8,0,1,5,3,2,110,170,400,1
 Style: Hook,Montserrat DEEV Bold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,3,8,100,140,330,1
 Style: Title,Montserrat DEEV Bold,104,&H009CC8E0,&H00FFFFFF,&H20000000,&H50000000,1,0,0,0,100,100,14,0,1,4,3,8,100,140,280,1
-Style: Label,Montserrat DEEV Regular,30,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,3,0,1,2,2,8,100,140,420,1
+Style: Label,Montserrat DEEV Regular,30,&H00FFFFFF,&H00FFFFFF,&H20000000,&H64000000,0,0,0,0,100,100,3,0,1,2,2,8,100,140,420,1
 Style: Brand,Montserrat DEEV SemiBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,6,0,1,2,2,8,100,140,420,1
 
 [Events]
@@ -193,14 +235,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         lines.append(f"Dialogue: 0,{ts(s)},{ts(e)},{style},,0,0,0,,{fade}{text}")
     s, _ = out_span(TITLE_FROM[0], TITLE_FROM[1], TITLE_FROM[1] + 0.5)
     lines.append(f"Dialogue: 1,{ts(s)},{ts(total)},Title,,0,0,0,,{fade}{TITLE}")
-    # подпись «визуализация» на всё время планов из рендеров
+    # подпись «визуализация» на всё время блоков из рендеров
     pos = 0.0
-    for kind, x, y in video_items():
-        d = (y - x) if kind == "mov" else y
-        if kind == "shot":
+    for item in video_items():
+        d = item_duration(item)
+        if item[0] == "block":
             lines.append(
                 f"Dialogue: 1,{ts(pos / SPEED)},{ts((pos + d) / SPEED)},Label,,0,0,0,,"
-                f"{INSERT_LABEL}"
+                f"{fade}{INSERT_LABEL}"
             )
         pos += d
     s, _ = out_span(BRAND_FROM[0], BRAND_FROM[1], BRAND_FROM[1] + 0.5)
@@ -208,27 +250,108 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     ASS.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
 
 
-def render_shot(name, start, end, dur, path):
-    """План из неподвижной визуализации: плавный наезд по кадру 9:16."""
-    img = Image.open(IMG / name).convert("RGB")
-    W, H = img.size
-    n = max(1, round(dur * FPS))
+def perspective_coeffs(dst, src):
+    """Коэффициенты PIL PERSPECTIVE: точки кадра dst → точки картинки src."""
+    m, v = [], []
+    for (x, y), (u, w) in zip(dst, src):
+        m.append([x, y, 1, 0, 0, 0, -u * x, -u * y]); v.append(u)
+        m.append([0, 0, 0, x, y, 1, -w * x, -w * y]); v.append(w)
+    return np.linalg.solve(np.array(m, float), np.array(v, float)).tolist()
+
+
+class Shot:
+    """План из неподвижной визуализации: движение камеры по кадру 9:16."""
+
+    def __init__(self, name):
+        file, self.a, self.b, self.yaw0, self.yaw1, self.sheen = SHOTS[name]
+        img = Image.open(IMG / file).convert("RGB")
+        # уменьшаем картинку один раз так, чтобы кадр был ≈ 1:1 к выходу
+        h_px = min(self.a[2], self.b[2]) * img.height
+        k = min(1.0, SIZE[1] * 1.15 / h_px)
+        if k < 1.0:
+            img = img.resize((round(img.width * k), round(img.height * k)), Image.LANCZOS)
+        self.img = img
+
+    def frame(self, u):
+        """u ∈ [0, 1] — положение внутри плана (с плавным стартом и остановкой)."""
+        e = u * u * (3 - 2 * u)
+        W, H = self.img.size
+        cx, cy, hf = (p + (q - p) * e for p, q in zip(self.a, self.b))
+        yaw = self.yaw0 + (self.yaw1 - self.yaw0) * e
+        h = hf * H
+        w = h * 9 / 16
+        if w > W:
+            w, h = W, W * 16 / 9
+        x0, y0 = cx * W - w / 2, cy * H - h / 2
+        # поворот перспективы: одна сторона кадра чуть выше, другая ниже
+        dy = yaw * h
+        quad = [(x0, y0 + dy), (x0 + w, y0 - dy), (x0 + w, y0 + h + dy), (x0, y0 + h - dy)]
+        # вписываем четырёхугольник в картинку без чёрных краёв
+        xs, ys = [p[0] for p in quad], [p[1] for p in quad]
+        s = min(1.0, W / (max(xs) - min(xs)), H / (max(ys) - min(ys)))
+        mx, my = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        quad = [(mx + (x - mx) * s, my + (y - my) * s) for x, y in quad]
+        xs, ys = [p[0] for p in quad], [p[1] for p in quad]
+        sx = -min(xs) if min(xs) < 0 else (W - max(xs) if max(xs) > W else 0)
+        sy = -min(ys) if min(ys) < 0 else (H - max(ys) if max(ys) > H else 0)
+        quad = [(x + sx, y + sy) for x, y in quad]
+        dst = [(0, 0), (SIZE[0], 0), (SIZE[0], SIZE[1]), (0, SIZE[1])]
+        out = self.img.transform(SIZE, Image.PERSPECTIVE,
+                                 perspective_coeffs(dst, quad), Image.BICUBIC)
+        arr = np.asarray(out, dtype=np.float32)
+        if self.sheen:
+            arr = arr + 38.0 * sheen_mask(e)[..., None] * (1 - arr / 255.0)
+        return arr
+
+
+_GRID = None
+
+
+def sheen_mask(e):
+    """Мягкая диагональная полоса света, проходящая по камню за время плана."""
+    global _GRID
+    if _GRID is None:
+        yy, xx = np.mgrid[0:SIZE[1], 0:SIZE[0]].astype(np.float32)
+        _GRID = (xx * 0.8 + yy * 0.45) / (SIZE[0] * 0.8 + SIZE[1] * 0.45)
+    p = -0.25 + 1.5 * e
+    return np.exp(-((_GRID - p) / 0.11) ** 2)
+
+
+def render_block(shots, path):
+    """Блок визуализаций с перетеканием планов (MIX секунд) и движением камеры."""
+    bounds, t = [], 0.0
+    for name, d in shots:
+        bounds.append((name, t, t + d))
+        t += d
+    n = round(t * FPS)
+    cache = {}
     proc = subprocess.Popen(
         [FFMPEG, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-         "-s", "1080x1920", "-r", str(FPS), "-i", "-",
+         "-s", f"{SIZE[0]}x{SIZE[1]}", "-r", str(FPS), "-i", "-",
          "-c:v", "libx264", "-crf", "12", "-preset", "fast",
          "-pix_fmt", "yuv420p", str(path)],
         stdin=subprocess.PIPE,
     )
+    half = MIX / 2
     for i in range(n):
-        k = i / max(1, n - 1)
-        k = k * k * (3 - 2 * k)  # плавный старт и остановка
-        cx, cy, w = (s + (e - s) * k for s, e in zip(start, end))
-        h = w * 16 / 9
-        x0 = min(max(cx - w / 2, 0), W - w)
-        y0 = min(max(cy - h / 2, 0), H - h)
-        frame = img.resize((1080, 1920), Image.LANCZOS, box=(x0, y0, x0 + w, y0 + h))
-        proc.stdin.write(frame.tobytes())
+        tt = (i + 0.5) / FPS
+        layers = []
+        for k, (name, s, e) in enumerate(bounds):
+            lo = s - (half if k > 0 else 0)
+            hi = e + (half if k < len(bounds) - 1 else 0)
+            if lo <= tt < hi:
+                if name not in cache:
+                    cache[name] = Shot(name)
+                u = (tt - lo) / (hi - lo)
+                wgt = 1.0
+                if k > 0 and tt < s + half:
+                    wgt = (tt - (s - half)) / MIX
+                if k < len(bounds) - 1 and tt > e - half:
+                    wgt = min(wgt, ((e + half) - tt) / MIX)
+                layers.append((wgt, cache[name].frame(u)))
+        total = sum(w for w, _ in layers)
+        frame = sum(w * f for w, f in layers) / total
+        proc.stdin.write(np.clip(frame, 0, 255).astype(np.uint8).tobytes())
     proc.stdin.close()
     proc.wait()
 
@@ -237,29 +360,28 @@ def build():
     write_ass()
     tmp = Path(tempfile.mkdtemp())
     items = video_items()
-    shot_files = []
-    for kind, x, y in items:
-        if kind == "shot":
-            name, start, end = SHOTS[x]
-            path = tmp / f"{x}_{len(shot_files)}.mp4"
-            render_shot(name, start, end, y, path)
-            shot_files.append(path)
+    blocks = []
+    for item in items:
+        if item[0] == "block":
+            path = tmp / f"block_{len(blocks)}.mp4"
+            render_block(item[1], path)
+            blocks.append(path)
 
     inputs = ["-i", str(SOURCES["mov"]), "-i", str(SOURCES["vo"])]
-    for p in shot_files:
+    for p in blocks:
         inputs += ["-i", str(p)]
 
     parts, vlabels, alabels = [], [], []
-    shot_idx = 2
-    for i, (kind, x, y) in enumerate(items):
-        if kind == "mov":
+    block_idx = 2
+    for i, item in enumerate(items):
+        if item[0] == "mov":
             parts.append(
-                f"[0:v]trim={x}:{y},setpts=PTS-STARTPTS,fps={FPS},"
+                f"[0:v]trim={item[1]}:{item[2]},setpts=PTS-STARTPTS,fps={FPS},"
                 f"scale=1080:1920:flags=lanczos,setsar=1[v{i}]"
             )
         else:
-            parts.append(f"[{shot_idx}:v]setpts=PTS-STARTPTS,fps={FPS},setsar=1[v{i}]")
-            shot_idx += 1
+            parts.append(f"[{block_idx}:v]setpts=PTS-STARTPTS,fps={FPS},setsar=1[v{i}]")
+            block_idx += 1
         vlabels.append(f"[v{i}]")
     for i, (src, a, b, _) in enumerate(PIECES):
         d = b - a
@@ -296,7 +418,30 @@ def build():
         str(OUT),
     ]
     subprocess.run(cmd, check=True)
+    normalize_audio()
     print(OUT)
+
+
+def normalize_audio():
+    """Второй проход loudnorm по измерениям первого: точно −14 LUFS, видео без перекодирования."""
+    import json
+    probe = subprocess.run(
+        [FFMPEG, "-hide_banner", "-i", str(OUT), "-af",
+         "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True,
+    ).stderr
+    m = json.loads(probe[probe.rindex("{"):probe.rindex("}") + 1])
+    tmp = OUT.with_suffix(".tmp.mp4")
+    subprocess.run(
+        [FFMPEG, "-y", "-v", "error", "-i", str(OUT), "-c:v", "copy", "-af",
+         "loudnorm=I=-14:TP=-1.5:LRA=11:linear=true"
+         f":measured_I={m['input_i']}:measured_TP={m['input_tp']}"
+         f":measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}"
+         f":offset={m['target_offset']},aresample=48000",
+         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp)],
+        check=True,
+    )
+    tmp.replace(OUT)
 
 
 if __name__ == "__main__":
