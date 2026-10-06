@@ -61,6 +61,8 @@ CUES = [
 # Надписи в координатах готового ролика.
 HOOK = (0.0, 4.4, "Hook", f"{ACC}Миф:{END}\\Nсовременный светильник\\N= качественный свет")
 BRAND = "DEEV architects"
+# Скорость готового ролика (атемпо сохраняет высоту голоса).
+SPEED = 1.15
 
 
 def out_span(a, b):
@@ -132,9 +134,13 @@ def build():
     fonts = str(FONTS).replace(":", r"\:")
     parts.append(
         "[vc]scale=1080:1920:flags=lanczos,setsar=1,"
-        f"subtitles='{ass}':fontsdir='{fonts}'[vout]"
+        f"subtitles='{ass}':fontsdir='{fonts}',"
+        # ускорение после субтитров: надписи ускоряются вместе с речью
+        f"setpts=PTS/{SPEED},fps=30[vout]"
     )
-    parts.append("[ac]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
+    parts.append(
+        f"[ac]atempo={SPEED},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"
+    )
     cmd = [
         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-v", "error",
         "-i", str(SOURCE),
