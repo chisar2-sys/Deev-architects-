@@ -5,6 +5,7 @@
 Результат: reels/2026-10-06_svet-i-son/reels.mp4
 """
 from pathlib import Path
+import re
 import subprocess
 
 import imageio_ffmpeg
@@ -33,6 +34,22 @@ SEGMENTS = [
     (500.30, 505.05), # «Здесь уже нужно подключать эксперта, архитектора, дизайнера»
     (505.05, 506.95), # «Контакт в описании…» (конец фразы неразборчив)
 ]
+# Фрагмент без речи: паузы в нём не вырезаются.
+NO_TRIM = {(85.60, 88.90)}
+
+# Паузы внутри фрагментов длиннее MAX_PAUSE вырезаются, по краям остаётся KEEP.
+MAX_PAUSE = 0.45
+KEEP = 0.15
+SILENCE_DB = -38
+
+# Шумоподавление: срез гула ниже 80 Гц, нейросеть RNNoise для речи,
+# затем мягкое FFT-подавление остаточного шума.
+RNN_MODEL = ROOT / "audio-models" / "cb.rnnn"
+DENOISE = (
+    "highpass=f=80,"
+    f"arnndn=m='{str(RNN_MODEL).replace(':', chr(92) + ':')}':mix=0.9,"
+    "afftdn=nf=-35"
+)
 
 # Текст на экране: (начало, конец в исходнике, стиль, текст).
 # Акцент — только на ключевых словах (регламент, п. 4 «Монтаж»).
@@ -58,17 +75,56 @@ CUES = [
     (500.30, 505.05, "Sub", f"здесь уже нужно подключать\\N{ACC}архитектора{END}"),
     (505.05, 506.95, "Sub", "Контакт — в описании"),
 ]
-# Надписи в координатах готового ролика.
-HOOK = (0.0, 4.4, "Hook", f"{ACC}Миф:{END}\\Nсовременный светильник\\N= качественный свет")
+# Хук сверху — пока звучит «Миф, что современный светильник…».
+HOOK = (24.50, 28.90, "Hook", f"{ACC}Миф:{END}\\Nсовременный светильник\\N= качественный свет")
 BRAND = "DEEV architects"
 # Скорость готового ролика (атемпо сохраняет высоту голоса).
 SPEED = 1.15
 
 
+def detect_silences():
+    """Паузы в речи исходника: список (начало, конец) в секундах."""
+    cmd = [
+        imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-i", str(SOURCE),
+        "-map", "0:a:0", "-af", f"silencedetect=n={SILENCE_DB}dB:d={MAX_PAUSE}",
+        "-f", "null", "-",
+    ]
+    log = subprocess.run(cmd, capture_output=True, text=True).stderr
+    starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", log)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", log)]
+    return list(zip(starts, ends))
+
+
+def tighten(segments, silences):
+    """Разрезает фрагменты по внутренним паузам, оставляя KEEP по краям."""
+    cuts = []
+    for a, b in segments:
+        if (a, b) in NO_TRIM:
+            cuts.append((a, b))
+            continue
+        pos = a
+        for s, e in silences:
+            lo, hi = max(s, a) + KEEP, min(e, b) - KEEP
+            if s < a:
+                lo = a          # фрагмент начинается в паузе
+            if e > b:
+                hi = b          # фрагмент заканчивается в паузе
+            if hi - lo > 0.05 and lo >= pos:
+                if lo - pos > 0.15:
+                    cuts.append((pos, lo))
+                pos = hi
+        if b - pos > 0.15:
+            cuts.append((pos, b))
+    return [(round(a, 3), round(b, 3)) for a, b in cuts]
+
+
+CUTS = []   # заполняется в build(): фрагменты без пауз
+
+
 def out_span(a, b):
     """Пересечение интервала исходника с фрагментами → интервал в ролике."""
     pos, start, end = 0.0, None, None
-    for sa, sb in SEGMENTS:
+    for sa, sb in CUTS:
         lo, hi = max(a, sa), min(b, sb)
         if lo < hi:
             if start is None:
@@ -85,7 +141,7 @@ def ts(t):
 
 
 def write_ass():
-    total = sum(b - a for a, b in SEGMENTS)
+    total = sum(b - a for a, b in CUTS)
     # Безопасная зона Reels 1080×1920: сверху ~250 px и снизу ~420 px занимает
     # интерфейс, справа ~140 px — кнопки. Субтитры стоят в одной стабильной зоне.
     header = """[Script Info]
@@ -106,7 +162,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     fade = r"{\fad(150,150)}"
     lines = []
-    s, e, style, text = HOOK
+    a, b, style, text = HOOK
+    s, e = out_span(a, b)
     lines.append(f"Dialogue: 1,{ts(s)},{ts(e)},{style},,0,0,0,,{fade}{text}")
     for a, b, style, text in CUES:
         s, e = out_span(a, b)
@@ -117,9 +174,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def build():
+    CUTS[:] = tighten(SEGMENTS, detect_silences())
+    before = sum(b - a for a, b in SEGMENTS)
+    after = sum(b - a for a, b in CUTS)
+    print(f"паузы: {len(CUTS)} кусков, {before:.1f} → {after:.1f} с")
     write_ass()
     parts, labels = [], []
-    for i, (a, b) in enumerate(SEGMENTS):
+    for i, (a, b) in enumerate(CUTS):
         d = b - a
         parts.append(f"[0:v]trim={a}:{b},setpts=PTS-STARTPTS,fps=30[v{i}]")
         # короткие фейды на стыках убирают щелчки звука
@@ -128,7 +189,7 @@ def build():
             f"afade=t=in:d=0.04,afade=t=out:st={d - 0.06:.3f}:d=0.06[a{i}]"
         )
         labels.append(f"[v{i}][a{i}]")
-    n = len(SEGMENTS)
+    n = len(CUTS)
     parts.append(f"{''.join(labels)}concat=n={n}:v=1:a=1[vc][ac]")
     ass = str(ASS).replace(":", r"\:")
     fonts = str(FONTS).replace(":", r"\:")
@@ -139,7 +200,7 @@ def build():
         f"setpts=PTS/{SPEED},fps=30[vout]"
     )
     parts.append(
-        f"[ac]atempo={SPEED},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"
+        f"[ac]{DENOISE},atempo={SPEED},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"
     )
     cmd = [
         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-v", "error",
