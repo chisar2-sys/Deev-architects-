@@ -27,7 +27,7 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 SEGMENTS = [
     (24.50, 31.45),   # «Миф, что современный светильник означает качественный свет…»
     (74.40, 78.72),   # «Захотел по нужде вечером пройтись в туалет. Включил весь свет»
-    (85.60, 88.90),   # пустой стул: включается свет (86.5 с)
+    (85.85, 88.30),   # звук щелчка выключателя (86.5 с); видео — вставка LIGHT_VIDEO
     (94.75, 97.45),   # «И всё, приплыли. Сну конец»
     (138.25, 140.55), # «Яркий свет просто его убивает»
     (144.47, 145.84), # «(Да) даже не сам свет, (а просто)
@@ -52,8 +52,15 @@ SEGMENTS = [
     (500.30, 505.05), # «Здесь уже нужно подключать эксперта, архитектора, дизайнера»
     (505.05, 506.95), # «Контакт в описании…»
 ]
+# Вставка «включил свет»: вместо пустого стула — кадр, где автор уже сидит
+# (92.25 с), сначала затемнённый «ночной», затем вспышка и горящая лампочка.
+# Звук остаётся свой, со щелчком выключателя.
+LIGHT = (85.85, 88.30)
+LIGHT_VIDEO = 92.25
+FLASH = 0.65          # момент щелчка от начала вставки
+BULB_X, BULB_Y = 240, 300
 # Фрагмент без речи: паузы в нём не вырезаются.
-NO_TRIM = {(85.60, 88.90)}
+NO_TRIM = {LIGHT}
 
 # Паузы внутри фрагментов длиннее MAX_PAUSE вырезаются, по краям остаётся KEEP.
 MAX_PAUSE = 0.45
@@ -113,7 +120,7 @@ CUES = [
 ]
 # Хук сверху — пока звучит «Миф, что современный светильник…».
 HOOK = (24.50, 28.90, "Hook", f"{ACC}Миф:{END}\\Nсовременный светильник\\N= качественный свет")
-BRAND = "DEEV architects"
+BRAND = f"{ACC}DEEV{END}\\Narchitects"
 # Скорость готового ролика (атемпо сохраняет высоту голоса).
 SPEED = 1.15
 
@@ -191,7 +198,7 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Sub,Montserrat DEEV SemiBold,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,3,2,2,120,160,470,1
 Style: Hook,Montserrat DEEV Bold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,3,3,8,100,140,330,1
-Style: Brand,Montserrat DEEV SemiBold,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,6,0,1,2,2,8,100,140,270,1
+Style: Brand,Montserrat DEEV Bold,92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H50000000,1,0,0,0,100,100,3,0,1,4,4,8,60,60,290,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -220,7 +227,15 @@ def build():
     parts, labels = [], []
     for i, (a, b) in enumerate(CUTS):
         d = b - a
-        parts.append(f"[0:v]trim={a}:{b},setpts=PTS-STARTPTS,fps=30[v{i}]")
+        if (a, b) == LIGHT:
+            # ночь → щелчок → вспышка, затем обычная яркость
+            parts.append(
+                f"[0:v]trim={LIGHT_VIDEO}:{LIGHT_VIDEO + d},setpts=PTS-STARTPTS,fps=30,"
+                f"eq=eval=frame:brightness='if(lt(t,{FLASH}),-0.32,"
+                f"0.22*exp(-(t-{FLASH})*4))':saturation='if(lt(t,{FLASH}),0.6,1)'[v{i}]"
+            )
+        else:
+            parts.append(f"[0:v]trim={a}:{b},setpts=PTS-STARTPTS,fps=30[v{i}]")
         # короткие фейды на стыках убирают щелчки звука
         parts.append(
             f"[0:a:0]atrim={a}:{b},asetpts=PTS-STARTPTS,"
@@ -240,6 +255,18 @@ def build():
             f"enable='between(t,{s:.3f},{e:.3f})'[vk{k}]"
         )
         prev = f"vk{k}"
+    s, e = out_span(*LIGHT)
+    k = len(CARDS) + 1
+    inputs += ["-i", str(CARDS_DIR / "bulb-off.png"), "-i", str(CARDS_DIR / "bulb-on.png")]
+    parts.append(
+        f"[{prev}][{k}:v]overlay=x={BULB_X}:y={BULB_Y}:"
+        f"enable='between(t,{s:.3f},{s + FLASH:.3f})'[vb0]"
+    )
+    parts.append(
+        f"[vb0][{k + 1}:v]overlay=x={BULB_X}:y={BULB_Y}:"
+        f"enable='between(t,{s + FLASH:.3f},{e:.3f})'[vb1]"
+    )
+    prev = "vb1"
     ass = str(ASS).replace(":", r"\:")
     fonts = str(FONTS).replace(":", r"\:")
     parts.append(
